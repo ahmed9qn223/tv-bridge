@@ -1,44 +1,43 @@
-// server.mjs
 import express from "express";
-import { fetch, Agent } from "undici";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-
-// allow-list ปลายทาง
 const ALLOW_RE = new RegExp(process.env.UPSTREAM_ALLOW || "^https?://");
-// ปรับแต่งเวลาเชื่อมต่อ/จำนวนครั้งที่ลองซ้ำได้ผ่าน env
-const CONNECT_TIMEOUT = Number(process.env.BRIDGE_TIMEOUT_MS || 25000); // 25s
+const CONNECT_TIMEOUT = Number(process.env.BRIDGE_TIMEOUT_MS || 25000);
 const RETRIES = Number(process.env.BRIDGE_RETRIES || 2);
 
-const agent = new Agent({ connect: { timeout: CONNECT_TIMEOUT } });
-
 app.get("/health", (req, res) => res.type("text").send("ok"));
+
+async function fetchWithTimeout(url, opts = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), CONNECT_TIMEOUT);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 app.get("/f", async (req, res) => {
   try {
     const u = String(req.query.u || "");
-    if (!u || !ALLOW_RE.test(u)) {
-      return res.status(400).json({ error: "invalid upstream" });
-    }
-    const target = new URL(u);
+    if (!u || !ALLOW_RE.test(u)) return res.status(400).json({ error: "invalid upstream" });
 
-    // headers ที่ forward ต่อ
     const fwd = new Headers();
     const ref = req.get("referer"); if (ref) fwd.set("Referer", ref);
     const ua  = req.get("user-agent"); if (ua) fwd.set("User-Agent", ua);
     const range = req.get("range"); if (range) fwd.set("Range", range);
     const accept = req.get("accept"); if (accept) fwd.set("Accept", accept);
 
-    let lastErr, resp;
+    let resp, lastErr;
     for (let i = 0; i <= RETRIES; i++) {
       try {
-        resp = await fetch(target.toString(), { headers: fwd, dispatcher: agent });
+        resp = await fetchWithTimeout(u, { headers: fwd });
         break;
       } catch (e) {
         lastErr = e;
         if (i === RETRIES) throw e;
-        await new Promise(r => setTimeout(r, 500 * (i + 1))); // backoff เล็กๆ
+        await new Promise(r => setTimeout(r, 500 * (i + 1)));
       }
     }
 

@@ -2,43 +2,48 @@ import express from "express";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const ALLOW_RE = new RegExp(process.env.UPSTREAM_ALLOW || "^https?://");
+
+// ========== Allowlist (แนะนำใช้ ALLOW_HOSTS) ==========
+const ALLOW_HOSTS = (process.env.ALLOW_HOSTS || "dolive.thaim3u.com,keela2.com")
+  .split(",").map(s => s.trim().toLowerCase());
+
+// ตั้งค่า timeout/retry ได้จาก env
 const CONNECT_TIMEOUT = Number(process.env.BRIDGE_TIMEOUT_MS || 25000);
-const RETRIES = Number(process.env.BRIDGE_RETRIES || 2);
+const RETRIES         = Number(process.env.BRIDGE_RETRIES || 2);
 
 app.get("/health", (req, res) => res.type("text").send("ok"));
 
 async function fetchWithTimeout(url, opts = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), CONNECT_TIMEOUT);
-  try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
 }
 
 app.get("/f", async (req, res) => {
   try {
-    const u = String(req.query.u || "");
-    if (!u || !ALLOW_RE.test(u)) return res.status(400).json({ error: "invalid upstream" });
+    const raw = String(req.query.u || "");
+    // รองรับทั้งแบบ encode และไม่ encode
+    const u = raw.startsWith("http") ? raw : decodeURIComponent(raw);
+    let host;
+    try { host = new URL(u).hostname.toLowerCase(); }
+    catch { return res.status(400).json({ error: "invalid url" }); }
 
+    // อนุญาตถ้า host ตรงหรือเป็น subdomain ของรายการที่กำหนด
+    const ok = ALLOW_HOSTS.some(h => host === h || host.endsWith("." + h));
+    if (!ok) return res.status(400).json({ error: "invalid upstream" });
+
+    // forward headers ที่จำเป็น
     const fwd = new Headers();
-    const ref = req.get("referer"); if (ref) fwd.set("Referer", ref);
+    const ref = req.get("referer");  if (ref)  fwd.set("Referer", ref);
     const ua  = req.get("user-agent"); if (ua) fwd.set("User-Agent", ua);
-    const range = req.get("range"); if (range) fwd.set("Range", range);
-    const accept = req.get("accept"); if (accept) fwd.set("Accept", accept);
+    const rng = req.get("range");    if (rng)  fwd.set("Range", rng);
+    const acc = req.get("accept");   if (acc)  fwd.set("Accept", acc);
 
     let resp, lastErr;
     for (let i = 0; i <= RETRIES; i++) {
-      try {
-        resp = await fetchWithTimeout(u, { headers: fwd });
-        break;
-      } catch (e) {
-        lastErr = e;
-        if (i === RETRIES) throw e;
-        await new Promise(r => setTimeout(r, 500 * (i + 1)));
-      }
+      try { resp = await fetchWithTimeout(u, { headers: fwd }); break; }
+      catch (e) { lastErr = e; if (i === RETRIES) throw e; await new Promise(r=>setTimeout(r, 500*(i+1))); }
     }
 
     res.status(resp.status);

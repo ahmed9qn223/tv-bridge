@@ -1,0 +1,26 @@
+import express from "express";
+const app = express();
+const PORT = process.env.PORT || 8080;
+const ALLOW_RE = new RegExp(process.env.UPSTREAM_ALLOW || "^https?://");
+app.get("/health",(req,res)=>res.type("text").send("ok"));
+app.get("/f", async (req, res) => {
+  try {
+    const u = String(req.query.u || "");
+    if (!u || !ALLOW_RE.test(u)) return res.status(400).json({ error: "invalid upstream" });
+    const target = new URL(u);
+    const fwd = new Headers();
+    const ref = req.get("referer"); if (ref) fwd.set("Referer", ref);
+    const ua  = req.get("user-agent"); if (ua) fwd.set("User-Agent", ua);
+    const range = req.get("range"); if (range) fwd.set("Range", range);
+    const accept = req.get("accept"); if (accept) fwd.set("Accept", accept);
+    const resp = await fetch(target.toString(), { headers: fwd });
+    res.status(resp.status);
+    resp.headers.forEach((v, k) => { if (!/^transfer-encoding|connection|keep-alive|proxy-/.test(k)) res.setHeader(k, v); });
+    res.setHeader("cache-control", "no-store");
+    if (resp.body) { for await (const chunk of resp.body) res.write(chunk); }
+    res.end();
+  } catch (e) {
+    console.error(e); res.status(502).json({ error: "bridge fetch failed" });
+  }
+});
+app.listen(PORT, ()=>console.log("tv-bridge listening on :"+PORT));

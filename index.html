@@ -217,7 +217,7 @@
         return;
       }
 
-      // 2. ค่าเริ่มต้นในตัว (Fallback กรณีไม่ได้ใช้ไฟล์ config.json แยก)
+      // 2. ค่าเริ่มต้นในตัว (Fallback)
       const DEFAULT_CONFIG = {
         base64Url: "aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=",
         defaultChannel: "gmm25",
@@ -231,7 +231,7 @@
         }
       };
 
-      // 3. ระบบ Dynamic Config (ดึงไฟล์ config.json อัตโนมัติถ้ามีในระบบ)
+      // 3. ระบบ Dynamic Config
       async function loadConfig() {
         try {
           const controller = new AbortController();
@@ -262,6 +262,7 @@
 
       const iframe = document.createElement('iframe');
       iframe.style.cssText = 'width:100%; height:100%; border:none; display:block; background:#000;';
+      // สำคัญมาก: ต้องมี allow autoplay เพื่อให้ iframe ได้รับสิทธิ์เล่นวิดีโออัตโนมัติ
       iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
       shadow.appendChild(iframe);
 
@@ -274,7 +275,6 @@
         loadingChName.textContent = label ? `ช่อง: ${label}` : '';
         loadingOverlay.classList.remove('hidden');
         clearTimeout(loadFallbackTimer);
-        // ซ่อนอัตโนมัติใน 6 วินาทีเผื่อสคริปต์โฆษณาฝั่งต้นทางโหลดช้า
         loadFallbackTimer = setTimeout(hideLoading, 6000);
       }
 
@@ -285,7 +285,7 @@
 
       iframe.addEventListener('load', hideLoading);
 
-      // 6. ฟังก์ชันอ่านชื่อช่องจาก URL (#hash หรือ ?ch=)
+      // 6. ฟังก์ชันอ่านชื่อช่องจาก URL
       function getRequestedChannel() {
         const hashVal = window.location.hash.trim();
         if (hashVal.length > 1) {
@@ -317,7 +317,7 @@
         });
       }
 
-      // 8. ฟังก์ชันสลับช่องแบบไม่ต้องรีโหลดหน้าเว็บใหม่ทั้งหมด
+      // 8. ฟังก์ชันสลับช่อง และบังคับ Autoplay
       function switchChannel(reqKey, updateHash = false) {
         const validKey = CHANNEL_MAP[reqKey] ? reqKey : defaultKey;
         const entry = CHANNEL_MAP[validKey];
@@ -331,16 +331,19 @@
           btn.classList.toggle('active', btn.dataset.ch === validKey);
         });
 
-        // อัปเดต URL Hash โดยไม่กระตุกหน้าเว็บ
+        // อัปเดต URL Hash
         if (updateHash && window.location.hash !== '#' + validKey) {
           history.replaceState(null, '', '#' + validKey);
         }
 
         showLoading(targetLabel);
-        iframe.src = baseUrl + targetSlug;
+        
+        // เพิ่มพารามิเตอร์บังคับเล่นวิดีโออัตโนมัติและปิดเสียงไว้ก่อน
+        const autoPlayParams = "?autoplay=1&mute=1&muted=1";
+        iframe.src = baseUrl + targetSlug + autoPlayParams;
       }
 
-      // 9. ปุ่มรีโหลดสตรีม & ปุ่มขยายเต็มจอ (Custom Fullscreen API)
+      // 9. ปุ่มรีโหลดสตรีม & ปุ่มขยายเต็มจอ
       document.getElementById('btn-reload').addEventListener('click', () => {
         if (activeChannelKey) switchChannel(activeChannelKey, false);
       });
@@ -366,7 +369,7 @@
 
       fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-      // 10. ระบบซ่อนแถบเมนูอัตโนมัติเมื่อไม่ได้ขยับเมาส์ (Auto-Hide HUD)
+      // 10. ระบบซ่อนแถบเมนูอัตโนมัติ (Auto-Hide HUD)
       const hudBar = document.getElementById('hud-bar');
       const topHoverZone = document.getElementById('top-hover-zone');
       let hudTimer = null;
@@ -391,7 +394,7 @@
       switchChannel(getRequestedChannel(), false);
       wakeHud();
 
-      // รองรับกรณีผู้ใช้เปลี่ยน #hash บนแถบ URL ด้วยตัวเอง
+      // เมื่อผู้ใช้พิมพ์เปลี่ยน #hash บนแถบ URL
       window.addEventListener('hashchange', () => {
         const newCh = getRequestedChannel();
         if (newCh !== activeChannelKey) {

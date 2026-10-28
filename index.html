@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <!-- ป้องกัน Error 404 favicon.ico ใน Console -->
   <link rel="icon" href="data:,">
   <title>LIVE STREAM PLAYER</title>
   <style>
@@ -23,7 +22,7 @@
 
   <script>
     (function() {
-      // 1. ตั้งค่า Domain Lock (อนุญาตเฉพาะ GitHub Pages ของคุณ และ localhost)
+      // 1. Domain Lock ป้องกันคนอื่นขโมยลิงก์ไปใช้
       const ALLOWED_DOMAINS = ['ahmed9qn223.github.io', 'localhost', '127.0.0.1'];
       const currentHost = window.location.hostname;
 
@@ -33,46 +32,37 @@
         return;
       }
 
-      // 2. กุญแจถอดรหัส XOR (ซ่อนคำว่า kicksball.com ออกจาก Source Code)
-      const SECRET_KEY = "DONOK_STREAM_KEY_2026";
-      const ENCRYPTED_BASE = "LA8aGFFeX19dCwocHxcPGUxNCh9cNF4JBRwfHhs="; // "https://kicksball.com/player/"
+      // 2. ถอดรหัส Base URL (ฐานลิงก์ต้นทาง)
+      // Base64 ของ "https://kicksball.com/player/" คือ aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=
+      const base64Url = "aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=";
+      const baseUrl = atob(base64Url);
 
-      function xorDecode(encodedB64, key) {
-        try {
-          const raw = atob(encodedB64);
-          let out = '';
-          for (let i = 0; i < raw.length; i++) {
-            out += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-          }
-          return out;
-        } catch {
-          return '';
-        }
-      }
-
-      // 3. รายชื่อช่องลัด (สามารถพิมพ์ #ชื่อช่องอะไรก็ได้ของเว็บต้นทางต่อท้าย URL ได้ทันที)
+      // 3. รายชื่อช่องสำหรับแปลงรหัสย่อ
       const CHANNEL_MAP = {
         "gmm25": "gmm25",
         "truefilm1": "true-film-1-418",
         "one31": "one31",
         "ch3": "ch3",
         "ch7": "ch7",
-        "pptv": "pptv",
-        "amarin": "amarin",
-        "thairath": "thairath",
-        "workpoint": "workpoint",
-        "mono29": "mono29",
-        "true4u": "true4u"
+        "pptv": "pptv"
       };
 
-      const hashCh = window.location.hash.replace('#', '').trim();
-      const urlParams = new URLSearchParams(window.location.search);
-      const reqChannel = hashCh || urlParams.get('ch') || 'gmm25';
+      // 4. ดึงค่าช่องจากแฮชให้อย่างแม่นยำ (เช่น #gmm25 จะได้คำว่า gmm25 ตรงๆ)
+      let reqChannel = "gmm25";
+      const hashVal = window.location.hash.trim();
+      if (hashVal.length > 1) {
+        reqChannel = hashVal.substring(1).toLowerCase();
+      } else {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('ch')) {
+          reqChannel = params.get('ch').toLowerCase();
+        }
+      }
 
-      const targetSlug = CHANNEL_MAP[reqChannel.toLowerCase()] || reqChannel;
-      const finalUrl = xorDecode(ENCRYPTED_BASE, SECRET_KEY) + targetSlug;
+      const targetSlug = CHANNEL_MAP[reqChannel] || reqChannel;
+      const finalUrl = baseUrl + targetSlug;
 
-      // 4. สร้าง Iframe ภายใน Closed Shadow DOM (ซ่อนจากหน้า Elements ปกติ + บล็อกโฆษณาเด้งด้วย sandbox)
+      // 5. สร้าง Iframe แสดงผลวิดีโอ
       const hostEl = document.getElementById('bridge-root');
       const shadow = hostEl.attachShadow({ mode: 'closed' });
 
@@ -80,15 +70,14 @@
       iframe.src = finalUrl;
       iframe.style.cssText = 'width:100%; height:100%; border:none; display:block;';
       iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
-      // บล็อกโฆษณาเด้งหน้าต่างใหม่ (ไม่มี allow-popups และ allow-top-navigation)
       iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-presentation');
 
       shadow.appendChild(iframe);
 
-      // รีโหลดอัตโนมัติเมื่อเปลี่ยน #ชื่อช่อง บน URL
+      // อัปเดตอัตโนมัติเมื่อกดเปลี่ยนช่อง (#hash) บน URL
       window.addEventListener('hashchange', () => location.reload());
 
-      // 5. บล็อกปุ่มคีย์ลัดดู Source Code พื้นฐาน (ไม่ใช้ debugger เพื่อไม่ให้หน้าเว็บค้าง)
+      // บล็อกปุ่มลัด F12 / Ctrl+U
       document.addEventListener('keydown', e => {
         if (
           e.key === 'F12' ||

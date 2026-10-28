@@ -33,7 +33,6 @@
       }
 
       // 2. ถอดรหัส Base URL (ฐานลิงก์ต้นทาง)
-      // Base64 ของ "https://kicksball.com/player/" คือ aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=
       const base64Url = "aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=";
       const baseUrl = atob(base64Url);
 
@@ -47,8 +46,8 @@
         "pptv": "pptv"
       };
 
-      // 4. ดึงค่าช่องจากแฮชให้อย่างแม่นยำ (เช่น #gmm25 จะได้คำว่า gmm25 ตรงๆ)
-      let reqChannel = "gmm25";
+      // 4. ดึงค่าช่องจากแฮช
+      let reqChannel = "gmm25"; // ช่องเริ่มต้น
       const hashVal = window.location.hash.trim();
       if (hashVal.length > 1) {
         reqChannel = hashVal.substring(1).toLowerCase();
@@ -59,7 +58,8 @@
         }
       }
 
-      const targetSlug = CHANNEL_MAP[reqChannel] || reqChannel;
+      // ปรับปรุง: Fallback กลับไปช่องเริ่มต้น (gmm25) เสมอหากพิมพ์ชื่อช่องผิด เพื่อป้องกันหน้าจอ 404 Not Found
+      const targetSlug = CHANNEL_MAP[reqChannel] || CHANNEL_MAP["gmm25"];
       const finalUrl = baseUrl + targetSlug;
 
       // 5. สร้าง Iframe แสดงผลวิดีโอ
@@ -70,8 +70,9 @@
       iframe.src = finalUrl;
       iframe.style.cssText = 'width:100%; height:100%; border:none; display:block;';
       iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-presentation');
-
+      
+      // ปรับปรุง: นำ sandbox attribute ออกเพื่อไม่ให้บล็อก WebSocket/P2P และสคริปต์ของ JW Player ฝั่งต้นทาง
+      
       shadow.appendChild(iframe);
 
       // อัปเดตอัตโนมัติเมื่อกดเปลี่ยนช่อง (#hash) บน URL

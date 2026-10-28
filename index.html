@@ -2,83 +2,404 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="referrer" content="no-referrer">
   <link rel="icon" href="data:,">
   <title>LIVE STREAM PLAYER</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
-    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-    #bridge-root { width: 100%; height: 100%; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #app-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    #bridge-root {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 1. หน้าจอ Loading Screen */
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, rgba(17,24,39,0.92) 0%, rgba(0,0,0,0.98) 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      transition: opacity 0.35s ease, visibility 0.35s ease;
+      pointer-events: none;
+    }
+
+    #loading-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255, 255, 255, 0.15);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+      margin-bottom: 14px;
+    }
+
+    .loading-text {
+      color: #e5e7eb;
+      font-size: 0.95rem;
+      letter-spacing: 0.5px;
+    }
+
+    .loading-channel {
+      color: #60a5fa;
+      font-weight: 600;
+      margin-top: 4px;
+      font-size: 0.85rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 2. แถบเมนูเลือกช่อง & ปุ่มควบคุม (Auto-Hide HUD) */
+    #hud-bar {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      max-width: 95vw;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    #hud-bar::-webkit-scrollbar {
+      display: none;
+    }
+
+    #hud-bar.idle {
+      opacity: 0;
+      transform: translate(-50%, -12px);
+      pointer-events: none;
+    }
+
+    /* โซนตรวจจับเมาส์ด้านบนเพื่อเรียกเมนูกลับมา */
+    #top-hover-zone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 68px;
+      z-index: 25;
+      background: transparent;
+    }
+
+    .ch-btn, .action-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: #d1d5db;
+      border: 1px solid transparent;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+
+    .ch-btn:hover, .action-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+    }
+
+    .ch-btn.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #60a5fa;
+      box-shadow: 0 0 12px rgba(37, 99, 235, 0.5);
+    }
+
+    .divider {
+      width: 1px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.18);
+      margin: 0 2px;
+      flex-shrink: 0;
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
     .error-msg {
-      color: #ef4444; display: flex; align-items: center; justify-content: center;
-      height: 100%; font-size: 1rem; text-align: center; padding: 20px;
+      color: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 1rem;
+      text-align: center;
+      padding: 20px;
     }
   </style>
 </head>
 <body oncontextmenu="return false;">
 
-  <div id="bridge-root"></div>
+  <div id="app-wrapper">
+    <!-- โซนขยับเมาส์ด้านบนเพื่อแสดงแถบเมนู -->
+    <div id="top-hover-zone"></div>
+
+    <!-- แถบเมนูเลือกช่องและปุ่มควบคุม -->
+    <div id="hud-bar">
+      <div id="channel-list" style="display:flex; gap:6px;"></div>
+      <div class="divider"></div>
+      <button id="btn-reload" class="action-btn" title="รีโหลดสัญญาณ">🔄</button>
+      <button id="btn-fullscreen" class="action-btn" title="ขยายเต็มจอ (Fullscreen)">⛶</button>
+    </div>
+
+    <!-- หน้าจอ Loading -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text">กำลังเชื่อมต่อสัญญาณสด...</div>
+      <div id="loading-ch-name" class="loading-channel"></div>
+    </div>
+
+    <!-- พื้นที่ฝัง Iframe ผ่าน Shadow DOM -->
+    <div id="bridge-root"></div>
+  </div>
 
   <script>
-    (function() {
+    (async function() {
       // 1. Domain Lock ป้องกันคนอื่นขโมยลิงก์ไปใช้
       const ALLOWED_DOMAINS = ['ahmed9qn223.github.io', 'localhost', '127.0.0.1'];
       const currentHost = window.location.hostname;
 
       if (ALLOWED_DOMAINS.length > 0 && !ALLOWED_DOMAINS.some(d => currentHost.includes(d))) {
+        document.getElementById('loading-overlay').classList.add('hidden');
+        document.getElementById('hud-bar').style.display = 'none';
         document.getElementById('bridge-root').innerHTML =
           '<div class="error-msg">⛔ ไม่อนุญาตให้ใช้งานนอกโดเมนที่กำหนด</div>';
         return;
       }
 
-      // 2. ถอดรหัส Base URL (ฐานลิงก์ต้นทาง)
-      const base64Url = "aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=";
-      const baseUrl = atob(base64Url);
-
-      // 3. รายชื่อช่องสำหรับแปลงรหัสย่อ
-      const CHANNEL_MAP = {
-        "gmm25": "gmm25",
-        "truefilm1": "truefilm1",
-        "one31": "one31",
-        "ch3": "ch3",
-        "ch7": "ch7",
-        "pptv": "pptv"
+      // 2. ค่าเริ่มต้นในตัว (Fallback กรณีไม่ได้ใช้ไฟล์ config.json แยก)
+      const DEFAULT_CONFIG = {
+        base64Url: "aHR0cHM6Ly9raWNrc2JhbGwuY29tL3BsYXllci8=",
+        defaultChannel: "gmm25",
+        channels: {
+          "gmm25":     { slug: "gmm25",     label: "GMM25" },
+          "truefilm1": { slug: "truefilm1", label: "True Film 1" },
+          "one31":     { slug: "one31",     label: "ONE 31" },
+          "ch3":       { slug: "ch3",       label: "CH 3" },
+          "ch7":       { slug: "ch7",       label: "CH 7" },
+          "pptv":      { slug: "pptv",      label: "PPTV" }
+        }
       };
 
-      // 4. ดึงค่าช่องจากแฮช
-      let reqChannel = "gmm25"; // ช่องเริ่มต้น
-      const hashVal = window.location.hash.trim();
-      if (hashVal.length > 1) {
-        reqChannel = hashVal.substring(1).toLowerCase();
-      } else {
-        const params = new URLSearchParams(window.location.search);
-        if (params.has('ch')) {
-          reqChannel = params.get('ch').toLowerCase();
+      // 3. ระบบ Dynamic Config (ดึงไฟล์ config.json อัตโนมัติถ้ามีในระบบ)
+      async function loadConfig() {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1800);
+          const res = await fetch('./config.json?t=' + Date.now(), {
+            signal: controller.signal,
+            cache: 'no-store'
+          });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const extConfig = await res.json();
+            return { ...DEFAULT_CONFIG, ...extConfig };
+          }
+        } catch (_) {
+          // ใช้ DEFAULT_CONFIG ทันทีหากไม่มีไฟล์ config.json
         }
+        return DEFAULT_CONFIG;
       }
 
-      // ปรับปรุง: Fallback กลับไปช่องเริ่มต้น (gmm25) เสมอหากพิมพ์ชื่อช่องผิด เพื่อป้องกันหน้าจอ 404 Not Found
-      const targetSlug = CHANNEL_MAP[reqChannel] || CHANNEL_MAP["gmm25"];
-      const finalUrl = baseUrl + targetSlug;
+      const config = await loadConfig();
+      const baseUrl = atob(config.base64Url);
+      const CHANNEL_MAP = config.channels;
+      const defaultKey = config.defaultChannel || "gmm25";
 
-      // 5. สร้าง Iframe แสดงผลวิดีโอ
+      // 4. เตรียม Shadow DOM และ Iframe
       const hostEl = document.getElementById('bridge-root');
       const shadow = hostEl.attachShadow({ mode: 'closed' });
 
       const iframe = document.createElement('iframe');
-      iframe.src = finalUrl;
-      iframe.style.cssText = 'width:100%; height:100%; border:none; display:block;';
+      iframe.style.cssText = 'width:100%; height:100%; border:none; display:block; background:#000;';
       iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
-      
-      // ปรับปรุง: นำ sandbox attribute ออกเพื่อไม่ให้บล็อก WebSocket/P2P และสคริปต์ของ JW Player ฝั่งต้นทาง
-      
       shadow.appendChild(iframe);
 
-      // อัปเดตอัตโนมัติเมื่อกดเปลี่ยนช่อง (#hash) บน URL
-      window.addEventListener('hashchange', () => location.reload());
+      // 5. การจัดการ Loading Screen
+      const loadingOverlay = document.getElementById('loading-overlay');
+      const loadingChName = document.getElementById('loading-ch-name');
+      let loadFallbackTimer = null;
 
-      // บล็อกปุ่มลัด F12 / Ctrl+U
+      function showLoading(label) {
+        loadingChName.textContent = label ? `ช่อง: ${label}` : '';
+        loadingOverlay.classList.remove('hidden');
+        clearTimeout(loadFallbackTimer);
+        // ซ่อนอัตโนมัติใน 6 วินาทีเผื่อสคริปต์โฆษณาฝั่งต้นทางโหลดช้า
+        loadFallbackTimer = setTimeout(hideLoading, 6000);
+      }
+
+      function hideLoading() {
+        clearTimeout(loadFallbackTimer);
+        loadingOverlay.classList.add('hidden');
+      }
+
+      iframe.addEventListener('load', hideLoading);
+
+      // 6. ฟังก์ชันอ่านชื่อช่องจาก URL (#hash หรือ ?ch=)
+      function getRequestedChannel() {
+        const hashVal = window.location.hash.trim();
+        if (hashVal.length > 1) {
+          return hashVal.substring(1).toLowerCase();
+        }
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('ch')) {
+          return params.get('ch').toLowerCase();
+        }
+        return defaultKey;
+      }
+
+      // 7. สร้างปุ่มเลือกช่องบน HUD
+      const channelListEl = document.getElementById('channel-list');
+      let activeChannelKey = null;
+
+      function renderChannelButtons() {
+        channelListEl.innerHTML = '';
+        Object.entries(CHANNEL_MAP).forEach(([key, item]) => {
+          const slug = typeof item === 'string' ? item : item.slug;
+          const label = typeof item === 'string' ? key.toUpperCase() : item.label;
+
+          const btn = document.createElement('button');
+          btn.className = 'ch-btn' + (key === activeChannelKey ? ' active' : '');
+          btn.textContent = label;
+          btn.dataset.ch = key;
+          btn.addEventListener('click', () => switchChannel(key, true));
+          channelListEl.appendChild(btn);
+        });
+      }
+
+      // 8. ฟังก์ชันสลับช่องแบบไม่ต้องรีโหลดหน้าเว็บใหม่ทั้งหมด
+      function switchChannel(reqKey, updateHash = false) {
+        const validKey = CHANNEL_MAP[reqKey] ? reqKey : defaultKey;
+        const entry = CHANNEL_MAP[validKey];
+        const targetSlug = typeof entry === 'string' ? entry : entry.slug;
+        const targetLabel = typeof entry === 'string' ? validKey.toUpperCase() : entry.label;
+
+        activeChannelKey = validKey;
+
+        // อัปเดตสถานะปุ่ม
+        document.querySelectorAll('.ch-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.ch === validKey);
+        });
+
+        // อัปเดต URL Hash โดยไม่กระตุกหน้าเว็บ
+        if (updateHash && window.location.hash !== '#' + validKey) {
+          history.replaceState(null, '', '#' + validKey);
+        }
+
+        showLoading(targetLabel);
+        iframe.src = baseUrl + targetSlug;
+      }
+
+      // 9. ปุ่มรีโหลดสตรีม & ปุ่มขยายเต็มจอ (Custom Fullscreen API)
+      document.getElementById('btn-reload').addEventListener('click', () => {
+        if (activeChannelKey) switchChannel(activeChannelKey, false);
+      });
+
+      const appWrapper = document.getElementById('app-wrapper');
+      const fullscreenBtn = document.getElementById('btn-fullscreen');
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          if (appWrapper.requestFullscreen) {
+            appWrapper.requestFullscreen();
+          } else if (appWrapper.webkitRequestFullscreen) {
+            appWrapper.webkitRequestFullscreen();
+          }
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          }
+        }
+      }
+
+      fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+      // 10. ระบบซ่อนแถบเมนูอัตโนมัติเมื่อไม่ได้ขยับเมาส์ (Auto-Hide HUD)
+      const hudBar = document.getElementById('hud-bar');
+      const topHoverZone = document.getElementById('top-hover-zone');
+      let hudTimer = null;
+
+      function wakeHud() {
+        hudBar.classList.remove('idle');
+        clearTimeout(hudTimer);
+        hudTimer = setTimeout(() => {
+          if (!hudBar.matches(':hover')) {
+            hudBar.classList.add('idle');
+          }
+        }, 3200);
+      }
+
+      topHoverZone.addEventListener('mousemove', wakeHud);
+      topHoverZone.addEventListener('touchstart', wakeHud, { passive: true });
+      hudBar.addEventListener('mousemove', wakeHud);
+      hudBar.addEventListener('mouseleave', wakeHud);
+
+      // เริ่มต้นระบบครั้งแรก
+      renderChannelButtons();
+      switchChannel(getRequestedChannel(), false);
+      wakeHud();
+
+      // รองรับกรณีผู้ใช้เปลี่ยน #hash บนแถบ URL ด้วยตัวเอง
+      window.addEventListener('hashchange', () => {
+        const newCh = getRequestedChannel();
+        if (newCh !== activeChannelKey) {
+          switchChannel(newCh, false);
+        }
+      });
+
+      // 11. บล็อกปุ่มลัด F12 / Ctrl+U และรองรับปุ่ม F เพื่อขยายเต็มจอ
       document.addEventListener('keydown', e => {
         if (
           e.key === 'F12' ||
@@ -86,6 +407,8 @@
           (e.ctrlKey && ['U', 'S', 'u', 's'].includes(e.key))
         ) {
           e.preventDefault();
+        } else if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.altKey) {
+          toggleFullscreen();
         }
       });
     })();
